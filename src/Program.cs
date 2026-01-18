@@ -1,5 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.CommandLine;
+using System.CommandLine.Help;
+using System.CommandLine.Invocation;
+using System.IO;
+using System.Linq;
 
 namespace AwsPriceParser
 {
@@ -37,34 +41,49 @@ namespace AwsPriceParser
             };
             */
 
-        private static bool IsAllowedSize(string size)
+        private static bool IsAllowedInstanceType(string size)
         {
             var p = AwsInstanceType.Parse(size);
             return p.Size is "large" or "xlarge" or "2xlarge" && (
                 p.Series is "m" or "c" or "r" && p.Generation is 7 or 8 && p.Options.Contains('g') && p.Options.Contains('d') ||
-                p.Series is "i"               && p.Generation is 7 or 8 && p.Options.Contains('g') ||
-                p.Series is "m" or "c" or "r" && p.Generation is 6      && p.Options.Contains('i') && p.Options.Contains('d') ||
-                p.Series is "m" or "c" or "r" && p.Generation is 5      && p.Options.Contains('d') ||
-                p.Series is "i"               && p.Generation is 4      && p.Options.Contains('i'));
+                p.Series is "i" && p.Generation is 7 or 8 && p.Options.Contains('g') ||
+                p.Series is "m" or "c" or "r" && p.Generation is 6 && p.Options.Contains('i') && p.Options.Contains('d') ||
+                p.Series is "m" or "c" or "r" && p.Generation is 5 && p.Options.Contains('d') ||
+                p.Series is "i" && p.Generation is 4 && p.Options.Contains('i'));
         }
 
-        private static bool IsAllowedRegion(string s) => s.StartsWith("eu-");
+        private static bool IsAllowedRegion(string region) => region.StartsWith("eu-");
+
+        private static bool IsAllowedOperationSystem(string operationSystem) => operationSystem is "Windows" or "Linux";
 
         private static int Main(string[] args)
         {
             try
             {
-                if (args.Length != 1)
-                    throw new ArgumentException("Invalid argument count");
-
-                var spotPrices = SpotJson.Read(args[0], IsAllowedRegion, IsAllowedSize);
-                SpotDump.DumpMd(spotPrices, Console.Out);
-                return 0;
+                var argument = new Argument<FileInfo>("json-file") { Arity = ArgumentArity.ExactlyOne, };
+                var spotsCommand = new Command("aws-spots") { Description = "Process JSON-file with AWS spot prices", Arguments = { argument } };
+                var onDemandsCommand = new Command("aws-on-demands") { Description = "Process JSON-file with AWS on-demand prices", Arguments = { argument } };
+                var rootCommand = new RootCommand("AWS spots and on-demands price parser") { Subcommands = { spotsCommand, onDemandsCommand }, };
+                spotsCommand.SetAction(result =>
+                    {
+                        var filename = result.GetRequiredValue(argument);
+                        var spotPrices = SpotJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
+                        Dump.DumpMd(spotPrices, Console.Out);
+                        return 0;
+                    });
+                onDemandsCommand.SetAction(result =>
+                    {
+                        var filename = result.GetRequiredValue(argument);
+                        var spotPrices = OnDemandJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
+                        Dump.DumpMd(spotPrices, Console.Out);
+                        return 0;
+                    });
+                return rootCommand.Parse(args).Invoke();
             }
             catch (Exception e)
             {
                 Console.Error.WriteLine(e);
-                return 1;
+                return 2;
             }
         }
     }
