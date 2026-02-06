@@ -1,4 +1,5 @@
 using AwsPriceParser;
+using NUnit.Framework;
 
 namespace AwsPriceParserTests
 {
