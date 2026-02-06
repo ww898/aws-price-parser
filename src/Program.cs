@@ -2,6 +2,7 @@
 using System.CommandLine;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 namespace AwsPriceParser
 {
@@ -42,6 +43,7 @@ namespace AwsPriceParser
         spotsCommand.SetAction(result =>
           {
             var filename = result.GetRequiredValue(argument);
+            Interlocked.MemoryBarrier();
             var spotPrices = SpotJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
             Dump.WriteMarkdown(Console.Out, "Spots", spotPrices);
             return 0;

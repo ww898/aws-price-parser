@@ -110,5 +110,7 @@ namespace AwsPriceParser
           return res;
         return 0;
       });
+
+    public record PriceKey(string Os, string Region, string InstanceType);
   }
 }

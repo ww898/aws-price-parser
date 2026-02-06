@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using static AwsPriceParser.Definitions;
 
 namespace AwsPriceParser
 {
@@ -30,13 +31,13 @@ namespace AwsPriceParser
       public record ValueColumns(string name, Prices prices);
     }
 
-    private static readonly Dictionary<string, string> ourOsNameMap = new()
+    private static readonly Dictionary<string, string> ourOsMap = new()
       {
         { "mswin", "Windows" },
         { "linux", "Linux" },
       };
 
-    public static Dictionary<string, Dictionary<string, Dictionary<string, double>>> Read(
+    public static Dictionary<PriceKey, double> Read(
       FileInfo file,
       Predicate<string> filterRegion,
       Predicate<string> filterInstanceType,
@@ -46,18 +47,16 @@ namespace AwsPriceParser
       using (var stream = file.Open(FileMode.Open, FileAccess.Read, FileShare.Read))
         root = JsonSerializer.Deserialize<Schema.Root>(stream)!;
 
-      if (Math.Abs(root.vers - 0.01) >= Definitions.Δ)
+      if (Math.Abs(root.vers - 0.01) >= Δ)
         throw new FormatException("Invalid version, 0.01 expected");
       var config = root.config;
       if (!config.currencies.Contains(nameof(Schema.Prices.USD)))
         throw new FormatException("USD is not supported");
 
-      var data = new Dictionary<string, Dictionary<string, Dictionary<string, double>>>();
+      var data = new Dictionary<PriceKey, double>();
       foreach (var (region, footnotes, instanceTypes) in config.regions)
         if (filterRegion(region))
         {
-          var footnotesSet = footnotes.Keys;
-
           bool TryGetCurrencyValue(string str, out double value)
           {
             str = footnotes.Keys.Aggregate(str, (current, key) => current.Replace(key, ""));
@@ -75,17 +74,9 @@ namespace AwsPriceParser
           foreach (var (size, valueColumns) in sizes)
             if (filterInstanceType(size))
               foreach (var (name, prices) in valueColumns)
-                if (ourOsNameMap.TryGetValue(name, out var os) && filterOperationSystem(os))
-                  if (TryGetCurrencyValue(prices.USD, out var usd))
-                  {
-                    if (!data.TryGetValue(os, out var osValue))
-                      data.Add(os, osValue = new());
-
-                    if (!osValue.TryGetValue(size, out var sizeValue))
-                      osValue.Add(size, sizeValue = new());
-
-                    sizeValue.Add(region, usd);
-                  }
+                if (ourOsMap.TryGetValue(name, out var os) && filterOperationSystem(os) &&
+                    TryGetCurrencyValue(prices.USD, out var usd))
+                  data.Add(new(os, region, size), usd);
         }
 
       return data;

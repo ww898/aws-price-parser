@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
+using static AwsPriceParser.Definitions;
 
 namespace AwsPriceParser
 {
@@ -32,7 +32,7 @@ namespace AwsPriceParser
       public record PricePerUnit(string USD);
     }
 
-    public static Dictionary<string, Dictionary<string, Dictionary<string, double>>> Read(
+    public static Dictionary<PriceKey, double> Read(
       FileInfo file,
       Predicate<string> filterRegion,
       Predicate<string> filterInstanceType,
@@ -47,7 +47,7 @@ namespace AwsPriceParser
       if (root.offerCode != "AmazonEC2")
         throw new FormatException("Invalid offer code, AmazonEC2 expected");
 
-      var data = new Dictionary<string, Dictionary<string, Dictionary<string, List<Tuple<double, string, Dictionary<string, string>>>>>>();
+      var data = new Dictionary<PriceKey, double>();
       foreach (var (productKey, tmp) in root.terms.OnDemand)
       foreach (var (_, term) in tmp)
       foreach (var (_, priceDimensions) in term.priceDimensions)
@@ -62,50 +62,12 @@ namespace AwsPriceParser
               attributes.TryGetValue("regionCode", out var regionCode) && filterRegion(regionCode) &&
               attributes.TryGetValue("instanceType", out var instanceType) && filterInstanceType(instanceType))
           {
-            if (!data.TryGetValue(operatingSystem, out var operatingSystemValue))
-              data.Add(operatingSystem, operatingSystemValue = new());
-
-            if (!operatingSystemValue.TryGetValue(instanceType, out var instanceTypeValue))
-              operatingSystemValue.Add(instanceType, instanceTypeValue = new());
-
-            if (!instanceTypeValue.TryGetValue(regionCode, out var regionCodeValue))
-              instanceTypeValue.Add(regionCode, regionCodeValue = new());
-
             var usd = double.Parse(priceDimensions.pricePerUnit.USD, CultureInfo.InvariantCulture);
-            regionCodeValue.Add(Tuple.Create(usd, productKey, product.attributes));
-          }
-        }
-      foreach (var (os, osValue) in data)
-      foreach (var (instanceType, instanceTypeValue) in osValue)
-      foreach (var (regionCode, regionCodeValue) in instanceTypeValue)
-        if (regionCodeValue.Count > 1)
-        {
-          Console.WriteLine($"{os} {instanceType} {regionCode}");
-
-          var same = new Dictionary<string, Tuple<bool, string?>>();
-          foreach (var (_, _, attributes) in regionCodeValue)
-          foreach (var (key, value) in attributes)
-            if (!same.TryGetValue(key, out var sameValue))
-              same.Add(key, Tuple.Create(true, (string?)value));
-            else if (sameValue.Item1 && sameValue.Item2 != value)
-              same[key] = Tuple.Create(false, (string?)null);
-
-          foreach (var (usd, productKey, attributes) in regionCodeValue)
-          {
-            Console.WriteLine($"  {productKey} {usd}");
-            foreach (var (key, sameValue) in same)
-              if (attributes.TryGetValue(key, out var value) && !sameValue.Item1)
-                Console.WriteLine($"    {key}={value}");
+            data.Add(new(operatingSystem, regionCode, instanceType), usd);
           }
         }
 
-      return data
-        .Select(x => KeyValuePair.Create(x.Key, x.Value
-          .Select(y => KeyValuePair.Create(y.Key, y.Value
-            .Select(z => KeyValuePair.Create(z.Key, z.Value.Single().Item1))
-            .ToDictionary()))
-          .ToDictionary()))
-        .ToDictionary();
+      return data;
     }
   }
 }
