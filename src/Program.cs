@@ -27,7 +27,7 @@ namespace AwsPriceParser
       static bool AllFlags(string str, string flags) => flags.All(str.Contains);
     }
 
-    private static bool IsAllowedRegion(string region) => region.StartsWith("eu-");
+    private static bool IsAllowedRegion(string region) => region is "eu-central-1" or "eu-north-1" or "eu-west-1";
 
     private static bool IsAllowedOperationSystem(string operationSystem) => operationSystem is "Windows" or "Linux";
 
