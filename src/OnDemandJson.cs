@@ -48,10 +48,7 @@ namespace AwsPriceParser
       var data = new Dictionary<PriceKey, double>();
       var products = root.products;
       foreach (var (productKey, tmp) in root.terms.OnDemand)
-      foreach (var (_, term) in tmp)
-      foreach (var (_, priceDimensions) in term.priceDimensions)
-        if (priceDimensions.unit is "Hrs" &&
-            products.TryGetValue(productKey, out var product) &&
+        if (products.TryGetValue(productKey, out var product) &&
             product.attributes is
               {
                 tenancy: "Shared",
@@ -64,17 +61,15 @@ namespace AwsPriceParser
               } &&
             filterOperationSystem(operatingSystem) &&
             filterRegion(regionCode) &&
-            filterInstanceType(instanceType) &&
-            TryGetCurrency(priceDimensions.pricePerUnit.USD, out var usd))
-          data.Add(new(operatingSystem, regionCode, instanceType), usd);
+            filterInstanceType(instanceType))
+        {
+          foreach (var (_, term) in tmp)
+          foreach (var (_, priceDimensions) in term.priceDimensions)
+            if (priceDimensions.unit is "Hrs")
+              data.Add(new(operatingSystem, regionCode, instanceType), double.Parse(priceDimensions.pricePerUnit.USD, CultureInfo.InvariantCulture));
+        }
 
       return data;
-
-      static bool TryGetCurrency(string str, out double value)
-      {
-        value = double.Parse(str, CultureInfo.InvariantCulture);
-        return true;
-      }
     }
   }
 }

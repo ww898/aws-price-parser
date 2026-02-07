@@ -11,56 +11,53 @@ namespace AwsPriceParser
   {
     public static void WriteMarkdown(TextWriter writer, string title, Dictionary<PriceKey, double> data)
     {
-      var operationSystems = new HashSet<string>();
-      var regions = new HashSet<string>();
-      var instanceTypes = new HashSet<string>();
-      foreach (var (priceKey, _) in data)
-      {
-        operationSystems.Add(priceKey.Os);
-        instanceTypes.Add(priceKey.InstanceType);
-        regions.Add(priceKey.Region);
-      }
+      var orderedOperationSystems = data.Select(x => x.Key.Os).Distinct().Order().ToList();
+      var orderedRegions = data.Select(x => x.Key.Region).Distinct().Order().ToList();
+      var orderedInstanceTypes = data.Select(x => x.Key.InstanceType).Distinct().Order(AwsEc2InstanceTypeNameComparer).ToList();
 
-      var orderedOperationSystems = operationSystems.OrderBy(x => x).ToList();
-      var orderedRegions = regions.OrderBy(x => x).ToList();
-      var orderedInstanceTypes = instanceTypes.OrderBy(x => x, AwsEc2InstanceTypeNameComparer).ToList();
-
+      var builder = new StringBuilder(1024);
       foreach (var operationSystem in orderedOperationSystems)
       {
-        writer.WriteLine($"### {title} for {operationSystem}:");
-        writer.WriteLine(orderedRegions.Aggregate(new StringBuilder("|Instance type|"), (builder, region) => builder.Append($"{GetRegionName(region) ?? "???"}</br>{region}|")));
-        writer.WriteLine(orderedRegions.Aggregate(new StringBuilder("|---|"), (builder, _) => builder.Append(":---:|")));
+        builder.Length = 0;
+        builder
+          .Append("### ").Append(title).Append(" for ").Append(operationSystem).Append(':')
+          .AppendLine().Append("|Instance type|");
+        foreach (var region in orderedRegions)
+          builder.Append(GetRegionName(region) ?? "???").Append("</br>").Append(region).Append('|');
+        builder.AppendLine().Append("|---|");
+        for (var n = orderedRegions.Count; n-- > 0;)
+          builder.Append(":---:|");
+        builder.AppendLine();
 
         foreach (var instanceType in orderedInstanceTypes)
         {
-          var minUsd = double.MaxValue;
-          var maxUsd = double.MinValue;
-          var usds = orderedRegions.Select(region =>
-            {
-              if (!data.TryGetValue(new(operationSystem, region, instanceType), out var usd))
-                return (double?)null;
-              minUsd = Math.Min(minUsd, usd);
-              maxUsd = Math.Max(maxUsd, usd);
-              return usd;
-            }).ToList();
-          if (usds.Any(x => x != null))
-            writer.WriteLine(usds.Aggregate(new StringBuilder($"|{instanceType}|"), (builder, mayBeUsd) =>
+          var sparseUsds = orderedRegions.Select(region => data.TryGetValue(new(operationSystem, region, instanceType), out var usd) ? usd : (double?)null).ToList();
+          var rangeUsds = sparseUsds.Where(x => x != null).Select(x => x ?? throw new NullReferenceException()).Aggregate(
+            new { Min = double.MaxValue, Max = double.MinValue },
+            (acc, v) => new { Min = Math.Min(acc.Min, v), Max = Math.Max(acc.Max, v) });
+          if (rangeUsds.Min <= rangeUsds.Max)
+          {
+            builder.Append('|').Append(instanceType).Append('|');
+            foreach (var sparseUsd in sparseUsds)
+              if (sparseUsd == null)
+                builder.Append("-|");
+              else
               {
-                if (mayBeUsd == null)
-                  return builder.Append("-|");
-                var usd = mayBeUsd.Value;
-                var isMin = Math.Abs(minUsd - usd) < Δ;
-                var isMax = Math.Abs(maxUsd - usd) < Δ;
-                if (isMin)
-                  builder.Append("**<span style=\"color:darkgreen;\">");
-                else if (isMax)
-                  builder.Append("**<span style=\"color:red;\">");
-                builder.Append(usd.ToString("F4"));
-                if (isMin || isMax)
-                  builder.Append("</span>**");
-                return builder.Append('|');
-              }));
+                var usd = sparseUsd.Value;
+                var usdStr = usd.ToString("F4");
+                if (Math.Abs(rangeUsds.Min - usd) < Δ)
+                  builder.Append("**<span style=\"color:darkgreen;\">").Append(usdStr).Append("</span>**|");
+                else if (Math.Abs(rangeUsds.Max - usd) < Δ)
+                  builder.Append("**<span style=\"color:red;\">").Append(usdStr).Append("</span>**|");
+                else
+                  builder.Append(usdStr).Append('|');
+              }
+
+            builder.AppendLine();
+          }
         }
+
+        writer.Write(builder);
       }
     }
   }

@@ -31,11 +31,7 @@ namespace AwsPriceParser
       public record Prices(string USD);
     }
 
-    private static readonly Dictionary<string, string> ourOsMap = new()
-      {
-        { "mswin", "Windows" },
-        { "linux", "Linux" },
-      };
+    private static readonly Dictionary<string, string> ourOsMap = new() { { "mswin", "Windows" }, { "linux", "Linux" }, };
 
     public static Dictionary<PriceKey, double> Read(
       FileInfo file,
@@ -64,23 +60,16 @@ namespace AwsPriceParser
             if (filterInstanceType(size))
               foreach (var (name, prices) in valueColumns)
                 if (ourOsMap.TryGetValue(name, out var os) && filterOperationSystem(os) &&
-                    TryGetCurrency(footnotes.Keys, prices.USD, out var usd))
-                  data.Add(new(os, region, size), usd);
+                    TryGetCurrencyStr(footnotes.Keys, prices.USD, out var usdStr))
+                  data.Add(new(os, region, size), double.Parse(usdStr, CultureInfo.InvariantCulture));
         }
 
       return data;
 
-      static bool TryGetCurrency(IEnumerable<string> footnotes, string str, out double value)
+      static bool TryGetCurrencyStr(IEnumerable<string> footnotes, string str, out string value)
       {
-        var res = footnotes.Aggregate(str, (current, key) => current.Replace(key, ""));
-        if (res == "N/A")
-        {
-          value = 0;
-          return false;
-        }
-
-        value = double.Parse(res, CultureInfo.InvariantCulture);
-        return true;
+        value = footnotes.Aggregate(str, (current, key) => current.Replace(key, ""));
+        return value != "N/A";
       }
     }
   }
