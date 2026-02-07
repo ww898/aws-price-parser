@@ -5,7 +5,7 @@ namespace AwsPriceParser
 {
   public static class Definitions
   {
-    public const double Δ = 0.00000001;
+    public const double Δ = 1e-12;
 
     private static readonly Dictionary<string, string> ourRegionNames = new()
       {

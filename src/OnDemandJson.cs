@@ -12,16 +12,14 @@ namespace AwsPriceParser
   {
     [SuppressMessage("ReSharper", "InconsistentNaming")]
     [SuppressMessage("ReSharper", "ClassNeverInstantiated.Local")]
+    [SuppressMessage("ReSharper", "IdentifierTypo")]
     private static class Schema
     {
-      public record Root(
-        string formatVersion,
-        string offerCode,
-        string version,
-        Dictionary<string, Product> products,
-        Terms terms);
+      public record Root(string formatVersion, string offerCode, Dictionary<string, Product> products, Terms terms);
 
-      public record Product(Dictionary<string, string> attributes);
+      public record Product(Attributes attributes);
+
+      public record Attributes(string tenancy, string preInstalledSw, string capacitystatus, string licenseModel, string operatingSystem, string regionCode, string instanceType);
 
       public record Terms(Dictionary<string, Dictionary<string, Term>> OnDemand);
 
@@ -49,26 +47,34 @@ namespace AwsPriceParser
 
       var data = new Dictionary<PriceKey, double>();
       var products = root.products;
-      foreach (var (productKey, payload) in root.terms.OnDemand)
-      foreach (var (_, term) in payload)
+      foreach (var (productKey, tmp) in root.terms.OnDemand)
+      foreach (var (_, term) in tmp)
       foreach (var (_, priceDimensions) in term.priceDimensions)
-        if (priceDimensions.unit == "Hrs" && products.TryGetValue(productKey, out var product))
-        {
-          var attributes = product.attributes;
-          if (attributes.TryGetValue("tenancy", out var tenancy) && tenancy == "Shared" &&
-              attributes.TryGetValue("preInstalledSw", out var preInstalledSw) && preInstalledSw == "NA" &&
-              attributes.TryGetValue("capacitystatus", out var capacitystatus) && capacitystatus == "Used" &&
-              attributes.TryGetValue("licenseModel", out var licenseModel) && licenseModel == "No License required" &&
-              attributes.TryGetValue("operatingSystem", out var operatingSystem) && filterOperationSystem(operatingSystem) &&
-              attributes.TryGetValue("regionCode", out var regionCode) && filterRegion(regionCode) &&
-              attributes.TryGetValue("instanceType", out var instanceType) && filterInstanceType(instanceType))
-          {
-            var usd = double.Parse(priceDimensions.pricePerUnit.USD, CultureInfo.InvariantCulture);
-            data.Add(new(operatingSystem, regionCode, instanceType), usd);
-          }
-        }
+        if (priceDimensions.unit is "Hrs" &&
+            products.TryGetValue(productKey, out var product) &&
+            product.attributes is
+              {
+                tenancy: "Shared",
+                preInstalledSw: "NA",
+                capacitystatus: "Used",
+                licenseModel: "No License required",
+                operatingSystem: var operatingSystem,
+                regionCode: var regionCode,
+                instanceType: var instanceType,
+              } &&
+            filterOperationSystem(operatingSystem) &&
+            filterRegion(regionCode) &&
+            filterInstanceType(instanceType) &&
+            TryGetCurrency(priceDimensions.pricePerUnit.USD, out var usd))
+          data.Add(new(operatingSystem, regionCode, instanceType), usd);
 
       return data;
+
+      static bool TryGetCurrency(string str, out double value)
+      {
+        value = double.Parse(str, CultureInfo.InvariantCulture);
+        return true;
+      }
     }
   }
 }
