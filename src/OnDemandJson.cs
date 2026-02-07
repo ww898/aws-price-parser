@@ -40,7 +40,7 @@ namespace AwsPriceParser
     {
       Schema.Root root;
       using (var stream = file.Open(FileMode.Open, FileAccess.Read, FileShare.Read))
-        root = JsonSerializer.Deserialize<Schema.Root>(stream, new JsonSerializerOptions())!;
+        root = JsonSerializer.Deserialize<Schema.Root>(stream)!;
 
       if (root.formatVersion != "v1.0")
         throw new FormatException("Invalid version, v1.0 expected");
@@ -48,10 +48,11 @@ namespace AwsPriceParser
         throw new FormatException("Invalid offer code, AmazonEC2 expected");
 
       var data = new Dictionary<PriceKey, double>();
-      foreach (var (productKey, tmp) in root.terms.OnDemand)
-      foreach (var (_, term) in tmp)
+      var products = root.products;
+      foreach (var (productKey, payload) in root.terms.OnDemand)
+      foreach (var (_, term) in payload)
       foreach (var (_, priceDimensions) in term.priceDimensions)
-        if (priceDimensions.unit == "Hrs" && root.products.TryGetValue(productKey, out var product))
+        if (priceDimensions.unit == "Hrs" && products.TryGetValue(productKey, out var product))
         {
           var attributes = product.attributes;
           if (attributes.TryGetValue("tenancy", out var tenancy) && tenancy == "Shared" &&
