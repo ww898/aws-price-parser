@@ -112,5 +112,15 @@ namespace AwsPriceParser
       });
 
     public record PriceKey(string Os, string Region, string InstanceType);
+
+    public record InstanceTypeInfo(
+      uint VCpu,
+      double MemoryInGiB,
+      uint StorageCount,
+      uint StorageSizeInGb,
+      string? StorageType,
+      string NetworkPerformance,
+      string PhysicalProcessor,
+      string? ClockSpeed);
   }
 }

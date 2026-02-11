@@ -61,7 +61,14 @@ namespace AwsPriceParser
               foreach (var (name, prices) in valueColumns)
                 if (ourOsMap.TryGetValue(name, out var os) && filterOperationSystem(os) &&
                     TryGetCurrencyStr(footnotes.Keys, prices.USD, out var usdStr))
-                  data.Add(new(os, region, size), double.Parse(usdStr, CultureInfo.InvariantCulture));
+                {
+                  var usd = double.Parse(usdStr, CultureInfo.InvariantCulture);
+                  var key = new PriceKey(os, region, size);
+                  if (!data.TryGetValue(key, out var prevUsd))
+                    data.Add(key, usd);
+                  else if (Math.Abs(prevUsd - usd) >= Δ)
+                    throw new FormatException($"Duplicate difference prices {usd.ToString(CultureInfo.InvariantCulture)} and {prevUsd.ToString(CultureInfo.InvariantCulture)} for {os},{region},{size}");
+                }
         }
 
       return data;

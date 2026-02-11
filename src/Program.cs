@@ -1,8 +1,9 @@
 ﻿using System;
 using System.CommandLine;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
-using System.Threading;
+using System.Text.Json;
 
 namespace AwsPriceParser
 {
@@ -10,6 +11,7 @@ namespace AwsPriceParser
   {
     private static bool IsAllowedInstanceType(string size)
     {
+      return true;
       var v = AwsInstanceType.Parse(size);
       if (v.Size is not ("large" or "xlarge" or "2xlarge"))
         return false;
@@ -32,27 +34,86 @@ namespace AwsPriceParser
 
     private static bool IsAllowedOperationSystem(string operationSystem) => operationSystem is "Windows" or "Linux";
 
+    [SuppressMessage("ReSharper", "InconsistentNaming")]
+    private enum OutputFormat
+    {
+      markdown,
+      json,
+    }
+
     private static int Main(string[] args)
     {
       try
       {
-        var argument = new Argument<FileInfo>("json-file") { Arity = ArgumentArity.ExactlyOne };
-        var spotsCommand = new Command("aws-spots") { Description = "Process JSON-file with AWS spot prices", Arguments = { argument } };
-        var onDemandsCommand = new Command("aws-on-demands") { Description = "Process JSON-file with AWS on-demand prices", Arguments = { argument } };
-        var rootCommand = new RootCommand("AWS spots and on-demands price parser") { Subcommands = { spotsCommand, onDemandsCommand } };
+        var outputFormatOption = new Option<OutputFormat>("--output", "-o")
+          {
+            Description = "Console output format",
+            DefaultValueFactory = _ => OutputFormat.json,
+            Arity = ArgumentArity.ZeroOrOne,
+          };
+        var sourceFileArgument = new Argument<FileInfo>("json-file") { Description = "Source JSON-file", Arity = ArgumentArity.ExactlyOne };
+        var spotsCommand = new Command("aws-spots") { Description = "Process JSON-file with AWS spot prices", Arguments = { sourceFileArgument } };
+        var onDemandsCommand = new Command("aws-on-demands") { Description = "Process JSON-file with AWS on-demand prices", Arguments = { sourceFileArgument } };
+        var instanceInfoCommand = new Command("aws-instances") { Description = "Process JSON-file with AWS on-demand prices", Arguments = { sourceFileArgument } };
+        var rootCommand = new RootCommand("AWS spots and on-demands price parser") { Subcommands = { spotsCommand, onDemandsCommand, instanceInfoCommand }, Options = { outputFormatOption } };
         spotsCommand.SetAction(result =>
           {
-            var filename = result.GetRequiredValue(argument);
-            Interlocked.MemoryBarrier();
+            var filename = result.GetRequiredValue(sourceFileArgument);
             var spotPrices = SpotJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
-            Dump.WriteMarkdown(Console.Out, "Spots", spotPrices);
+            switch (result.GetValue(outputFormatOption))
+            {
+              case OutputFormat.markdown:
+                Dump.WriteMarkdown(Console.Out, "Spots", spotPrices);
+                break;
+              case OutputFormat.json:
+                using (var stream = Console.OpenStandardOutput())
+                using (var writer = new Utf8JsonWriter(stream, new() { Indented = true, IndentSize = 2 }))
+                  Dump.WriteJson(writer, spotPrices);
+                break;
+              default:
+                throw new ArgumentOutOfRangeException();
+            }
+
             return 0;
           });
         onDemandsCommand.SetAction(result =>
           {
-            var filename = result.GetRequiredValue(argument);
-            var spotPrices = OnDemandJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
-            Dump.WriteMarkdown(Console.Out, "On-demands", spotPrices);
+            var filename = result.GetRequiredValue(sourceFileArgument);
+            var (spotPrices, _) = OnDemandJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
+            switch (result.GetValue(outputFormatOption))
+            {
+              case OutputFormat.markdown:
+                Dump.WriteMarkdown(Console.Out, "On-demands", spotPrices);
+                break;
+              case OutputFormat.json:
+                using (var stream = Console.OpenStandardOutput())
+                using (var writer = new Utf8JsonWriter(stream, new() { Indented = true, IndentSize = 2 }))
+                  Dump.WriteJson(writer, spotPrices);
+                break;
+              default:
+                throw new ArgumentOutOfRangeException();
+            }
+
+            return 0;
+          });
+        instanceInfoCommand.SetAction(result =>
+          {
+            var filename = result.GetRequiredValue(sourceFileArgument);
+            var (_, instanceTypeInfo) = OnDemandJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
+            switch (result.GetValue(outputFormatOption))
+            {
+              case OutputFormat.markdown:
+                Dump.WriteMarkdown(Console.Out, instanceTypeInfo);
+                break;
+              case OutputFormat.json:
+                using (var stream = Console.OpenStandardOutput())
+                using (var writer = new Utf8JsonWriter(stream, new() { Indented = true, IndentSize = 2 }))
+                  Dump.WriteJson(writer, instanceTypeInfo);
+                break;
+              default:
+                throw new ArgumentOutOfRangeException();
+            }
+
             return 0;
           });
         return rootCommand.Parse(args).Invoke();
