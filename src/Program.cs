@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using static AwsPriceParser.Definitions;
 
 namespace AwsPriceParser
 {
@@ -32,7 +33,7 @@ namespace AwsPriceParser
 
     private static bool IsAllowedRegion(string region) => region is "eu-central-1" or "eu-north-1" or "eu-west-1";
 
-    private static bool IsAllowedOperationSystem(string operationSystem) => operationSystem is "Windows" or "Linux";
+    private static bool IsAllowedOs(Os os) => os is Os.Windows or Os.Linux;
 
     [SuppressMessage("ReSharper", "InconsistentNaming")]
     private enum OutputFormat
@@ -59,16 +60,16 @@ namespace AwsPriceParser
         spotsCommand.SetAction(result =>
           {
             var filename = result.GetRequiredValue(sourceFileArgument);
-            var spotPrices = SpotJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
+            var prices = SpotJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOs);
             switch (result.GetValue(outputFormatOption))
             {
               case OutputFormat.markdown:
-                Dump.WriteMarkdown(Console.Out, "Spots", spotPrices);
+                Dump.WriteMarkdown(Console.Out, "Spots", DateTime.Now, prices);
                 break;
               case OutputFormat.json:
                 using (var stream = Console.OpenStandardOutput())
                 using (var writer = new Utf8JsonWriter(stream, new() { Indented = true, IndentSize = 2 }))
-                  Dump.WriteJson(writer, spotPrices);
+                  Dump.WriteJson(writer, "spots", DateTime.Now, prices);
                 break;
               default:
                 throw new ArgumentOutOfRangeException();
@@ -79,16 +80,16 @@ namespace AwsPriceParser
         onDemandsCommand.SetAction(result =>
           {
             var filename = result.GetRequiredValue(sourceFileArgument);
-            var (spotPrices, _) = OnDemandJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
+            var (prices, _) = OnDemandJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOs);
             switch (result.GetValue(outputFormatOption))
             {
               case OutputFormat.markdown:
-                Dump.WriteMarkdown(Console.Out, "On-demands", spotPrices);
+                Dump.WriteMarkdown(Console.Out, "On-demands", DateTime.Now, prices);
                 break;
               case OutputFormat.json:
                 using (var stream = Console.OpenStandardOutput())
                 using (var writer = new Utf8JsonWriter(stream, new() { Indented = true, IndentSize = 2 }))
-                  Dump.WriteJson(writer, spotPrices);
+                  Dump.WriteJson(writer, "on-demands", DateTime.Now, prices);
                 break;
               default:
                 throw new ArgumentOutOfRangeException();
@@ -99,7 +100,7 @@ namespace AwsPriceParser
         instanceInfoCommand.SetAction(result =>
           {
             var filename = result.GetRequiredValue(sourceFileArgument);
-            var (_, instanceTypeInfo) = OnDemandJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOperationSystem);
+            var (_, instanceTypeInfo) = OnDemandJson.Read(filename, IsAllowedRegion, IsAllowedInstanceType, IsAllowedOs);
             switch (result.GetValue(outputFormatOption))
             {
               case OutputFormat.markdown:

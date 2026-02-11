@@ -31,13 +31,13 @@ namespace AwsPriceParser
       public record Prices(string USD);
     }
 
-    private static readonly Dictionary<string, string> ourOsMap = new() { { "mswin", "Windows" }, { "linux", "Linux" }, };
+    private static readonly Dictionary<string, Os> ourOsMap = new() { { "mswin", Os.Windows }, { "linux", Os.Linux }, };
 
     public static Dictionary<PriceKey, double> Read(
       FileInfo file,
       Predicate<string> filterRegion,
       Predicate<string> filterInstanceType,
-      Predicate<string> filterOperationSystem)
+      Predicate<Os> filterOs)
     {
       Schema.Root root;
       using (var stream = file.Open(FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -59,7 +59,7 @@ namespace AwsPriceParser
           foreach (var (size, valueColumns) in instanceType.sizes)
             if (filterInstanceType(size))
               foreach (var (name, prices) in valueColumns)
-                if (ourOsMap.TryGetValue(name, out var os) && filterOperationSystem(os) &&
+                if (ourOsMap.TryGetValue(name, out var os) && filterOs(os) &&
                     TryGetCurrencyStr(footnotes.Keys, prices.USD, out var usdStr))
                 {
                   var usd = double.Parse(usdStr, CultureInfo.InvariantCulture);

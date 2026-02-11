@@ -48,11 +48,13 @@ namespace AwsPriceParser
 
     private static readonly Regex ourStorageRegex = new(@"^(?>(?'c'\d+)\s[xX]\s)?(?'s'\d+)\s?(?>GB)?\s?(?'t'NVMe\sSSD|SSD|HDD)?$");
 
+    private static readonly Dictionary<string, Os> ourOsMap = new() { { "Windows", Os.Windows }, { "Linux", Os.Linux }, };
+
     public static (Dictionary<PriceKey, double>, Dictionary<string, InstanceTypeInfo>) Read(
       FileInfo file,
       Predicate<string> filterRegion,
       Predicate<string> filterInstanceType,
-      Predicate<string> filterOperationSystem)
+      Predicate<Os> filterOs)
     {
       Schema.Root root;
       using (var stream = file.Open(FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -79,7 +81,7 @@ namespace AwsPriceParser
                 regionCode: var regionCode,
                 instanceType: var instanceType,
               } attributes &&
-            filterOperationSystem(operatingSystem) &&
+            ourOsMap.TryGetValue(operatingSystem, out var os) && filterOs(os) &&
             filterRegion(regionCode) &&
             filterInstanceType(instanceType))
         {
@@ -104,7 +106,7 @@ namespace AwsPriceParser
             if (priceDimensions.unit is "Hrs")
             {
               var usd = double.Parse(priceDimensions.pricePerUnit.USD, CultureInfo.InvariantCulture);
-              var key = new PriceKey(operatingSystem, regionCode, instanceType);
+              var key = new PriceKey(os, regionCode, instanceType);
               if (!data.TryGetValue(key, out var prevUsd))
                 data.Add(key, usd);
               else if (Math.Abs(prevUsd - usd) >= Δ)

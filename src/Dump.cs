@@ -35,22 +35,30 @@ namespace AwsPriceParser
       writer.WriteEndObject();
     }
 
-    public static void WriteJson(Utf8JsonWriter writer, Dictionary<PriceKey, double> data)
+    public static void WriteJson(Utf8JsonWriter writer, string type, DateTime timespamp, Dictionary<PriceKey, double> data)
     {
-      var orderedOperationSystems = data.Select(x => x.Key.Os).Distinct().Order().ToList();
+      var orderedOses = data.Select(x => x.Key.Os).Distinct().Order().ToList();
       var orderedRegions = data.Select(x => x.Key.Region).Distinct().Order().ToList();
       var orderedInstanceTypes = data.Select(x => x.Key.InstanceType).Distinct().Order(AwsEc2InstanceTypeNameComparer).ToList();
 
       writer.WriteStartObject();
-      foreach (var operationSystem in orderedOperationSystems)
+      writer.WriteString("type", type);
+      writer.WriteString("timestamp", timespamp);
+      writer.WriteStartObject("data");
+      foreach (var os in orderedOses)
       {
-        writer.WriteStartObject(operationSystem);
+        writer.WriteStartObject(os switch
+          {
+            Os.Windows => "windows",
+            Os.Linux => "linux",
+            _ => throw new ArgumentOutOfRangeException($"Unsupported OS {os}")
+          });
         foreach (var region in orderedRegions)
         {
           writer.WriteStartObject(region);
           foreach (var instanceType in orderedInstanceTypes)
           {
-            if (data.TryGetValue(new(operationSystem, region, instanceType), out var usd))
+            if (data.TryGetValue(new(os, region, instanceType), out var usd))
               writer.WriteNumber(instanceType, usd);
           }
 
@@ -60,6 +68,7 @@ namespace AwsPriceParser
         writer.WriteEndObject();
       }
 
+      writer.WriteEndObject();
       writer.WriteEndObject();
     }
 
@@ -94,18 +103,23 @@ namespace AwsPriceParser
       writer.Write(builder);
     }
 
-    public static void WriteMarkdown(TextWriter writer, string title, Dictionary<PriceKey, double> data)
+    public static void WriteMarkdown(TextWriter writer, string title, DateTime timestamp, Dictionary<PriceKey, double> data)
     {
-      var orderedOperationSystems = data.Select(x => x.Key.Os).Distinct().Order().ToList();
+      var orderedOses = data.Select(x => x.Key.Os).Distinct().Order().ToList();
       var orderedRegions = data.Select(x => x.Key.Region).Distinct().Order().ToList();
       var orderedInstanceTypes = data.Select(x => x.Key.InstanceType).Distinct().Order(AwsEc2InstanceTypeNameComparer).ToList();
 
       var builder = new StringBuilder(1024);
-      foreach (var operationSystem in orderedOperationSystems)
+      foreach (var os in orderedOses)
       {
         builder.Length = 0;
         builder
-          .Append("### ").Append(title).Append(" for ").Append(operationSystem).Append(':')
+          .Append("### ").Append(title).Append(" for ").Append(os switch
+            {
+              Os.Windows => "Windows",
+              Os.Linux => "Linux",
+              _ => throw new ArgumentOutOfRangeException($"Unsupported OS {os}")
+            }).Append(" (").Append(timestamp.ToString("R")).Append("):")
           .AppendLine().Append("|Instance type|");
         foreach (var region in orderedRegions)
           builder.Append(GetRegionName(region) ?? "???").Append("</br>").Append(region).Append('|');
@@ -116,7 +130,7 @@ namespace AwsPriceParser
 
         foreach (var instanceType in orderedInstanceTypes)
         {
-          var sparseUsds = orderedRegions.Select(region => data.TryGetValue(new(operationSystem, region, instanceType), out var usd) ? usd : (double?)null).ToList();
+          var sparseUsds = orderedRegions.Select(region => data.TryGetValue(new(os, region, instanceType), out var usd) ? usd : (double?)null).ToList();
           var rangeUsds = sparseUsds.Where(x => x != null).Select(x => x ?? throw new NullReferenceException()).Aggregate(
             new { Min = double.MaxValue, Max = double.MinValue },
             (acc, v) => new { Min = Math.Min(acc.Min, v), Max = Math.Max(acc.Max, v) });

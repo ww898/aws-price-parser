@@ -111,7 +111,13 @@ namespace AwsPriceParser
         return 0;
       });
 
-    public record PriceKey(string Os, string Region, string InstanceType);
+    public enum Os
+    {
+      Windows,
+      Linux,
+    }
+
+    public record PriceKey(Os Os, string Region, string InstanceType);
 
     public record InstanceTypeInfo(
       uint VCpu,
