@@ -124,7 +124,7 @@ namespace AwsPriceParser
       double MemoryInGiB,
       uint StorageCount,
       uint StorageSizeInGb,
-      string? StorageType,
+      string StorageType,
       string NetworkPerformance,
       string PhysicalProcessor,
       string? ClockSpeed);

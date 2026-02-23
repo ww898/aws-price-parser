@@ -89,7 +89,7 @@ namespace AwsPriceParser
           {
             var vCpu = uint.Parse(attributes.vcpu, CultureInfo.InvariantCulture);
             var memoryInGiB = GetMemoryInGiB(attributes.memory);
-            var (storageCount, storageSizeInGb, storageType) = GetStorage(attributes.storage);
+            var (storageCount, storageSizeInGb, storageType) = GetStorage(attributes.storage, instanceType);
             config.Add(instanceType, new(
               VCpu: vCpu,
               MemoryInGiB: memoryInGiB,
@@ -116,7 +116,7 @@ namespace AwsPriceParser
 
       return new(data, config);
 
-      static (uint storageCount, uint storageSizeInGb, string? storageType) GetStorage(string storage)
+      static (uint storageCount, uint storageSizeInGb, string storageType) GetStorage(string storage, string instanceType)
       {
         if (storage == "EBS only")
           return (0, 0, "EBS");
@@ -130,7 +130,15 @@ namespace AwsPriceParser
           return (
             countGroup.Success ? uint.Parse(countGroup.Value, CultureInfo.InvariantCulture) : 1u,
             uint.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture),
-            typeGroup.Success ? typeGroup.Value : null);
+            typeGroup.Success ? typeGroup.Value : RecoveryStorageType());
+        }
+
+        string RecoveryStorageType()
+        {
+          var v = AwsInstanceType.Parse(instanceType);
+          if (v is { Generation: 8, Series: "i", Options: "g" })
+            return "AWS Nitro SSD";
+          throw new FormatException($"Failed to recovery storage type for {instanceType}");
         }
       }
 
