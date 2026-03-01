@@ -89,7 +89,7 @@ namespace AwsPriceParser
           {
             var vCpu = uint.Parse(attributes.vcpu, CultureInfo.InvariantCulture);
             var memoryInGiB = GetMemoryInGiB(attributes.memory);
-            var (storageCount, storageSizeInGb, storageType) = GetStorage(attributes.storage, instanceType);
+            var (storageType, storageCount, storageSizeInGb) = GetStorage(attributes.storage, instanceType);
             config.Add(instanceType, new(
               VCpu: vCpu,
               MemoryInGiB: memoryInGiB,
@@ -116,10 +116,10 @@ namespace AwsPriceParser
 
       return new(data, config);
 
-      static (uint storageCount, uint storageSizeInGb, string storageType) GetStorage(string storage, string instanceType)
+      static (string storageType, uint storageCount, uint storageSizeInGb) GetStorage(string storage, string instanceType)
       {
         if (storage == "EBS only")
-          return (0, 0, "EBS");
+          return ("EBS", 0, 0);
         else
         {
           var match = ourStorageRegex.Match(storage);
@@ -128,9 +128,9 @@ namespace AwsPriceParser
           var countGroup = match.Groups["c"];
           var typeGroup = match.Groups["t"];
           return (
+            typeGroup.Success ? typeGroup.Value : RecoveryStorageType(),
             countGroup.Success ? uint.Parse(countGroup.Value, CultureInfo.InvariantCulture) : 1u,
-            uint.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture),
-            typeGroup.Success ? typeGroup.Value : RecoveryStorageType());
+            uint.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture));
         }
 
         string RecoveryStorageType()
